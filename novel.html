@@ -91,11 +91,19 @@ input[type=range]::-moz-range-thumb{width:24px;height:24px;border-radius:50%;bac
 .status a{color:var(--accent);text-decoration:none}
 .footnote{max-width:680px;margin:0 auto;padding:24px 20px calc(140px + env(safe-area-inset-bottom));color:var(--muted);font-size:12px;line-height:1.8;text-align:center}
 .footnote a{color:var(--accent);text-decoration:none}
+/* 翻页模式：CSS 分栏分页，浏览器负责断行，JS 只负责平移 */
+body.pagemode{overflow:hidden;height:100dvh}
+body.pagemode .footnote{display:none}
+#pageWrap{overflow:hidden;position:relative}
+#pageFlow{column-fill:auto}
+#pageIndicator{position:fixed;left:50%;bottom:14px;transform:translateX(-50%);z-index:90;font-size:12px;color:var(--muted);pointer-events:none;display:none}
+body.pagemode:not(.chrome) #pageIndicator{display:block}
 </style></head>
 <body>
 <div id="dimOverlay"></div>
 <nav id="topbar"><button id="topTocBtn">目录</button><h1 id="bookTitle">加载中…</h1><button id="aaBtn">Aa</button></nav>
 <main id="content"><p class="status" id="statusText">正在加载目录…</p></main>
+<div id="pageIndicator"></div>
 <p class="footnote">内容由源站提供，本页仅做排版呈现（正文不经过机器人服务器存储）。若加载失败，可点屏幕调出菜单、进设置点「在原站打开」。</p>
 <nav id="bottombar">
 <input type="range" id="chapterSlider" min="0" max="0" value="0" step="1">
@@ -116,6 +124,9 @@ input[type=range]::-moz-range-thumb{width:24px;height:24px;border-radius:50%;bac
 </div></div></div></div>
 <div class="sec"><h3>字体</h3><div class="group"><div class="row"><div class="seg" id="fontSeg">
 <button data-font="sans" class="on">系统</button><button data-font="serif">衬线</button>
+</div></div></div></div>
+<div class="sec"><h3>阅读模式</h3><div class="group"><div class="row"><div class="seg" id="modeSeg">
+<button data-mode="scroll" class="on">滚动</button><button data-mode="page">翻页</button>
 </div></div></div></div>
 <div class="sec"><h3>主题</h3><div class="group"><div class="row"><div class="themes">
 <button class="theme-dot" data-theme="white" style="background:#ffffff" aria-label="白色"></button>
@@ -165,6 +176,8 @@ function altReaderUrl(alt) {
   Object.keys(rest[0]).forEach(k => rest[0][k] === undefined && delete rest[0][k]);
   alts.forEach((o) => { if (o.site !== alt.site) rest.push(o); });
   rest.forEach((o) => qp.append("alt", JSON.stringify(o)));
+  const vParam = params.get("v");
+  if (vParam) qp.set("v", vParam);
   return WORKER + "?" + qp.toString();
 }
 const statusEl = document.getElementById("statusText");
@@ -229,7 +242,7 @@ function hashStr(s){
 }
 const KEY = site === "sto66" ? "novel-sto66-" + bookId + "-progress" : "novel-" + site + "-" + hashStr(bookUrl) + "-progress";
 let chapters = [];
-let cur = 0, fontSize = 19, lineH = 1.9, fontFamily = "sans", brightness = 100;
+let cur = 0, fontSize = 19, lineH = 1.9, fontFamily = "sans", brightness = 100, pageMode = false, curPage = 0, totalPages = 1, colW = 0, colGap = 44, pageH = 0, savedPage = 0;
 try {
   const saved = JSON.parse(localStorage.getItem(KEY) || "null");
   if (saved) {
@@ -238,9 +251,12 @@ try {
     brightness = (typeof saved.brightness === "number" && saved.brightness >= 40 && saved.brightness <= 100) ? saved.brightness : 100;
     if (saved.night) document.body.classList.add("night");
     if (Number.isInteger(saved.chapter)) cur = saved.chapter;
+    if (saved.pageMode === true) pageMode = true;
+    if (Number.isInteger(saved.page)) { savedPage = saved.page; curPage = saved.page; }
   }
 } catch (e) {}
-function save(){ try { localStorage.setItem(KEY, JSON.stringify({chapter: cur, fontSize, lineH, night: document.body.classList.contains("night"), fontFamily, brightness})); } catch (e) {} }
+if (pageMode) document.body.classList.add("pagemode");
+function save(){ try { localStorage.setItem(KEY, JSON.stringify({chapter: cur, fontSize, lineH, night: document.body.classList.contains("night"), fontFamily, brightness, pageMode, page: curPage})); } catch (e) {} }
 function apply(){
   mainEl.style.fontSize = fontSize + "px";
   mainEl.querySelectorAll(".chapter p").forEach(p => p.style.lineHeight = lineH);
@@ -258,6 +274,8 @@ function apply(){
   if (br) br.value = brightness;
   const bv = document.getElementById("brightVal");
   if (bv) bv.textContent = brightness + "%";
+  document.querySelectorAll("#modeSeg button").forEach(b => b.classList.toggle("on", (b.dataset.mode === "page") === pageMode));
+  if (pageMode) layoutPages();
 }
 function esc(s){ return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
 async function fetchDoc(url, viaWorker){
@@ -451,7 +469,6 @@ function renderChapter(){
   (c.body || []).forEach(t => {
     const p = document.createElement("p"); p.textContent = t; sec.appendChild(p);
   });
-  mainEl.appendChild(sec);
   const end = document.createElement("div");
   end.className = "endnav";
   if (cur < chapters.length - 1) {
@@ -468,16 +485,63 @@ function renderChapter(){
     tb.onclick = openCatalog;
     end.appendChild(tb);
   }
-  mainEl.appendChild(end);
+  if (pageMode) {
+    const wrap = document.createElement("div"); wrap.id = "pageWrap";
+    const flow = document.createElement("div"); flow.id = "pageFlow";
+    flow.appendChild(sec); flow.appendChild(end);
+    wrap.appendChild(flow); mainEl.appendChild(wrap);
+  } else {
+    mainEl.appendChild(sec); mainEl.appendChild(end);
+  }
   document.querySelectorAll(".toc-item").forEach((t, j) => t.classList.toggle("active", j === cur));
   document.getElementById("prevBtn").disabled = cur === 0;
   document.getElementById("nextBtn").disabled = cur === chapters.length - 1;
-  const prog = document.getElementById("progressText");
-  if (prog) prog.textContent = "第 " + (cur + 1) + " / " + chapters.length + " 章 · " + (chapters.length ? Math.round((cur + 1) / chapters.length * 100) : 0) + "%";
   const slider = document.getElementById("chapterSlider");
   if (slider) { slider.max = Math.max(0, chapters.length - 1); slider.value = cur; }
-  window.scrollTo({ top: 0 });
+  updateProgress();
+  if (!pageMode) window.scrollTo({ top: 0 });
   apply(); save();
+}
+function updateProgress(){
+  const prog = document.getElementById("progressText");
+  if (prog) prog.textContent = pageMode
+    ? "第 " + (cur + 1) + " / " + chapters.length + " 章 · 第 " + (curPage + 1) + " / " + totalPages + " 页"
+    : "第 " + (cur + 1) + " / " + chapters.length + " 章 · " + (chapters.length ? Math.round((cur + 1) / chapters.length * 100) : 0) + "%";
+  const ind = document.getElementById("pageIndicator");
+  if (ind) ind.textContent = (curPage + 1) + " / " + totalPages;
+}
+function layoutPages(){
+  const flow = document.getElementById("pageFlow");
+  const wrap = document.getElementById("pageWrap");
+  if (!flow || !wrap) return;
+  const oldTotal = totalPages;
+  const oldFrac = oldTotal > 1 ? curPage / (oldTotal - 1) : 0;
+  colW = Math.max(200, (mainEl.clientWidth || window.innerWidth) - 44);
+  pageH = Math.max(200, window.innerHeight - 64);
+  wrap.style.height = pageH + "px";
+  flow.style.height = pageH + "px";
+  flow.style.columnWidth = colW + "px";
+  flow.style.columnGap = colGap + "px";
+  const sw = flow.scrollWidth;
+  totalPages = Math.max(1, Math.round((sw + colGap) / (colW + colGap)));
+  curPage = Math.min(Math.max(0, Math.round(oldFrac * (totalPages - 1))), totalPages - 1);
+  flow.style.transform = "translateX(" + (-curPage * (colW + colGap)) + "px)";
+  updateProgress();
+}
+function goPage(n){
+  if (!pageMode) return;
+  curPage = Math.min(Math.max(0, n), totalPages - 1);
+  const flow = document.getElementById("pageFlow");
+  if (flow) flow.style.transform = "translateX(" + (-curPage * (colW + colGap)) + "px)";
+  updateProgress(); save();
+}
+function nextPage(){
+  if (curPage < totalPages - 1) goPage(curPage + 1);
+  else if (cur < chapters.length - 1) show(cur + 1, 0);
+}
+function prevPage(){
+  if (curPage > 0) goPage(curPage - 1);
+  else if (cur > 0) show(cur - 1, "last");
 }
 async function loadChapterBody(c){
   if (site === "sto66") {
@@ -527,7 +591,7 @@ async function loadChapterBody(c){
   }
   if (!c.body.length) throw new Error("正文为空");
 }
-async function show(i){
+async function show(i, page = 0){
   cur = Math.min(Math.max(i, 0), chapters.length - 1);
   const c = chapters[cur];
   if (!c.body) {
@@ -545,17 +609,32 @@ async function show(i){
     }
   }
   renderChapter();
+  if (pageMode) goPage(page === "last" ? totalPages - 1 : (page || 0));
 }
 // ── 菜单与面板（新 UI 层）──
 // 点屏幕出/藏菜单：只认「短按且几乎没动」的轻点，滑动选字不触发
 let downX = 0, downY = 0, downT = 0;
 mainEl.addEventListener("pointerdown", (e) => { downX = e.clientX; downY = e.clientY; downT = Date.now(); });
 mainEl.addEventListener("pointerup", (e) => {
+  if (document.getElementById("sheet").classList.contains("open")) { closeSheet(); return; }
+  if (pageMode) {
+    const dx = e.clientX - downX, dy = e.clientY - downY;
+    if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+      if (dx < 0) nextPage(); else prevPage();
+      return;
+    }
+  }
   if (Date.now() - downT > 300) return;
   if (Math.abs(e.clientX - downX) > 10 || Math.abs(e.clientY - downY) > 10) return;
   if (e.target.closest("button, a, input")) return;
-  if (document.getElementById("sheet").classList.contains("open")) { closeSheet(); return; }
-  document.body.classList.toggle("chrome");
+  if (pageMode) {
+    const x = e.clientX / window.innerWidth;
+    if (x < 0.33) prevPage();
+    else if (x > 0.66) nextPage();
+    else document.body.classList.toggle("chrome");
+  } else {
+    document.body.classList.toggle("chrome");
+  }
 });
 function openSheet(){
   document.getElementById("sheet").classList.add("open");
@@ -593,6 +672,35 @@ document.getElementById("fontPlus").onclick = () => { fontSize = Math.min(26, fo
 document.getElementById("fontRange").addEventListener("input", (e) => { fontSize = parseInt(e.target.value, 10) || 19; apply(); save(); });
 document.querySelectorAll("#lineSeg button").forEach(b => { b.onclick = () => { lineH = +b.dataset.line; apply(); save(); }; });
 document.querySelectorAll("#fontSeg button").forEach(b => { b.onclick = () => { fontFamily = b.dataset.font; apply(); save(); }; });
+document.querySelectorAll("#modeSeg button").forEach(b => { b.onclick = () => {
+  const wantPage = b.dataset.mode === "page";
+  if (wantPage === pageMode) return;
+  let frac = 0;
+  if (pageMode) { frac = totalPages > 1 ? curPage / (totalPages - 1) : 0; }
+  else {
+    const maxScroll = document.body.scrollHeight - window.innerHeight;
+    frac = maxScroll > 0 ? window.scrollY / maxScroll : 0;
+  }
+  pageMode = wantPage;
+  document.body.classList.toggle("pagemode", pageMode);
+  renderChapter();
+  if (pageMode) { goPage(Math.round(frac * (totalPages - 1))); }
+  else {
+    const maxScroll = document.body.scrollHeight - window.innerHeight;
+    window.scrollTo(0, Math.round(frac * Math.max(0, maxScroll)));
+  }
+  apply(); save();
+}; });
+let resizeTimer = null;
+window.addEventListener("resize", () => {
+  if (!pageMode) return;
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => {
+    const frac = totalPages > 1 ? curPage / (totalPages - 1) : 0;
+    layoutPages();
+    goPage(Math.round(frac * (totalPages - 1)));
+  }, 150);
+});
 document.getElementById("nightSwitch").addEventListener("change", (e) => { document.body.classList.toggle("night", e.target.checked); apply(); save(); });
 document.getElementById("brightRange").addEventListener("input", (e) => { brightness = parseInt(e.target.value, 10) || 100; apply(); save(); });
 // 主题切换：偏好存独立键 novel-theme2（默认白色），原有阅读进度对象不动
@@ -617,7 +725,7 @@ loadCatalog().then(() => {
     tocList.appendChild(b);
   });
   if (cur >= chapters.length) cur = 0;
-  statusEl.remove(); show(cur); apply();
+  statusEl.remove(); show(cur, savedPage); apply();
 }).catch(e => {
   document.getElementById("bookTitle").textContent = "加载失败";
   fail("目录加载失败（" + (e.message || e) + "）。");
