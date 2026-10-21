@@ -3,44 +3,72 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>小说阅读页</title>
 <style>
-:root{--bg:#fdfbf7;--fg:#2b2620;--muted:#8a8272;--line:#e8e0d2;--accent:#b07d3c}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Noto Serif SC",serif;-webkit-font-smoothing:antialiased}
-body.night{--bg:#171512;--fg:#cfc8bd;--muted:#8d867c;--line:#2e2a26;--accent:#d0a05e}
-header{position:sticky;top:0;background:var(--bg);border-bottom:1px solid var(--line);padding:12px 16px;z-index:10}
-header h1{font-size:17px;margin:0 0 2px}header .author{font-size:13px;color:var(--muted)}
-.toolbar{display:flex;gap:8px;padding:10px 16px;border-bottom:1px solid var(--line);flex-wrap:wrap}
-.toolbar button,.toolbar a{background:transparent;border:1px solid var(--line);color:var(--fg);border-radius:20px;padding:6px 12px;font-size:13px;text-decoration:none}
-#toc{position:fixed;inset:0 auto 0 0;width:min(300px,80vw);background:var(--bg);border-right:1px solid var(--line);transform:translateX(-105%);transition:transform .25s;z-index:20;overflow-y:auto;padding:16px}
-#toc.open{transform:none}#toc h2{font-size:15px;margin:0 0 10px}
-.toc-item{display:block;width:100%;text-align:left;background:none;border:0;border-bottom:1px solid var(--line);color:var(--fg);padding:9px 2px;font-size:14px}
-.toc-item.active{color:var(--accent);font-weight:700}
-main{max-width:720px;margin:0 auto;padding:20px 20px calc(88px + env(safe-area-inset-bottom))}
-.chapter h2{font-size:19px;margin:8px 0 18px}.chapter p{line-height:1.9;margin:0 0 1em;text-align:justify}
-.nav{display:flex;justify-content:space-between;gap:12px;margin:28px 0}
-.nav button{flex:1;border:1px solid var(--line);background:transparent;color:var(--fg);border-radius:12px;padding:12px;font-size:15px}
-.nav button:disabled{opacity:.35}
-#mask{position:fixed;inset:0;background:rgba(0,0,0,.35);display:none;z-index:15}
+:root{--bg:#f7f1e3;--fg:#33302a;--muted:#9a917f;--line:#e6dcc8;--accent:#e86a2c;--card:#fffdf8;--bar:#fffdf8}
+body[data-theme="white"]{--bg:#ffffff;--fg:#222222;--muted:#999999;--line:#eeeeee;--card:#ffffff;--bar:#ffffff}
+body[data-theme="green"]{--bg:#d9e8cf;--fg:#2e3b2a;--muted:#7d8a76;--line:#c2d4b4;--card:#e6f0e1;--bar:#e6f0e1}
+body[data-theme="pink"]{--bg:#fce9e6;--fg:#3d2c2a;--muted:#a68f8c;--line:#f0d2cd;--card:#fef4f2;--bar:#fef4f2}
+body[data-theme="blue"]{--bg:#e3eaf2;--fg:#2c3540;--muted:#85909c;--line:#cbd6e2;--card:#eef3f8;--bar:#eef3f8}
+body.night{--bg:#161616;--fg:#a8a8a8;--muted:#777777;--line:#2c2c2c;--accent:#e08a4e;--card:#1e1e1e;--bar:#1e1e1e}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans SC",sans-serif;-webkit-font-smoothing:antialiased;transition:background .25s,color .25s}
+header{position:sticky;top:0;background:var(--bar);border-bottom:1px solid var(--line);padding:14px 22px 12px;z-index:10}
+header h1{font-size:17px;font-weight:700;margin:0 0 3px;letter-spacing:.02em}
+header .author{font-size:12px;color:var(--muted);letter-spacing:.05em}
+main{max-width:720px;margin:0 auto;padding:28px 22px 8px}
+.chapter h2{font-size:22px;font-weight:800;line-height:1.4;margin:4px 0 6px;letter-spacing:.01em}
+.chapter h2::after{content:"";display:block;width:34px;height:3px;background:var(--accent);border-radius:2px;margin-top:14px}
+.chapter p{line-height:1.9;margin:0 0 1em;text-align:justify;letter-spacing:.015em}
+.nav{display:flex;gap:12px;margin:36px 0 8px}
+.nav button{flex:1;border:0;background:var(--card);color:var(--fg);border-radius:14px;padding:14px;font-size:15px;font-weight:600;box-shadow:0 1px 4px rgba(0,0,0,.06)}
+.nav button:disabled{opacity:.35;box-shadow:none}
+.bottombar{position:fixed;left:0;right:0;bottom:0;background:var(--bar);border-top:1px solid var(--line);padding:10px 16px calc(10px + env(safe-area-inset-bottom));z-index:10}
+.progress{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.progress .bar{flex:1;height:4px;background:var(--line);border-radius:2px;overflow:hidden}
+.progress .bar i{display:block;height:100%;background:var(--accent);border-radius:2px;width:0%}
+.progress span{font-size:12px;color:var(--muted);white-space:nowrap}
+.controls{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.controls button,.controls a{background:transparent;border:1px solid var(--line);color:var(--fg);border-radius:20px;padding:7px 13px;font-size:13px;font-weight:500;text-decoration:none}
+.controls button:active,.controls a:active{background:var(--line)}
+.themes{display:flex;gap:8px;align-items:center;margin-left:auto}
+.theme-dot{width:26px;height:26px;border-radius:50%;border:2px solid var(--line);padding:0;cursor:pointer}
+.theme-dot.active{border-color:var(--accent);box-shadow:0 0 0 2px var(--bar),0 0 0 4px var(--accent)}
+#toc{position:fixed;top:0;bottom:0;left:0;width:min(320px,84vw);background:var(--bar);border-right:1px solid var(--line);transform:translateX(-105%);transition:transform .28s ease;z-index:20;overflow-y:auto;padding:0}
+#toc.open{transform:none}
+#toc h2{font-size:16px;font-weight:700;margin:0;padding:18px 18px 12px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--bar)}
+.toc-item{display:block;width:100%;text-align:left;background:none;border:0;border-bottom:1px solid var(--line);color:var(--fg);padding:13px 18px;font-size:14px;line-height:1.5}
+.toc-item.active{color:var(--accent);font-weight:700;border-left:3px solid var(--accent);padding-left:15px}
+#mask{position:fixed;inset:0;background:rgba(0,0,0,.4);display:none;z-index:15}
 #mask.show{display:block}
-.status{color:var(--muted);font-size:14px;line-height:1.8}
+.status{color:var(--muted);font-size:14px;line-height:1.8;text-align:center;padding:60px 0}
 .status button{background:transparent;border:1px solid var(--line);color:var(--fg);border-radius:20px;padding:6px 12px;font-size:13px}
-.footnote{max-width:720px;margin:0 auto;padding:0 20px 40px;color:var(--muted);font-size:12px;line-height:1.8}
-.footnote a{color:var(--accent)}
+.footnote{max-width:720px;margin:0 auto;padding:0 20px calc(150px + env(safe-area-inset-bottom));color:var(--muted);font-size:12px;line-height:1.8;text-align:center}
+.footnote a{color:var(--accent);text-decoration:none}
 </style></head>
 <body>
 <header><h1 id="bookTitle">加载中…</h1><div class="author" id="bookAuthor"></div></header>
-<div class="toolbar">
+<div id="mask"></div>
+<nav id="toc"><h2 id="tocTitle">目录</h2><div id="tocList"></div></nav>
+<main id="content"><p class="status" id="statusText">正在加载目录…</p></main>
+<div style="max-width:720px;margin:0 auto;padding:0 22px"><div class="nav">
+<button id="prevBtn" disabled>← 上一章</button><button id="nextBtn" disabled>下一章 →</button>
+</div></div>
+<p class="footnote">内容由源站提供，本页仅做排版呈现（正文不经过机器人服务器存储）。若加载失败，可点上方「原站」直接在源站阅读。</p>
+<div class="bottombar">
+<div class="progress"><div class="bar"><i id="progressBar"></i></div><span id="progressText">-- / --</span></div>
+<div class="controls">
 <button id="tocBtn">📑 目录</button>
 <button id="fontMinus">A-</button><button id="fontPlus">A+</button>
 <button id="lineBtn">行距</button><button id="nightBtn">🌙 夜间</button>
 <a id="sourceLink" href="#" target="_blank" rel="noopener">原站 ↗</a>
+<span class="themes">
+<button class="theme-dot" data-theme="paper" style="background:#f7f1e3" aria-label="米色"></button>
+<button class="theme-dot" data-theme="white" style="background:#ffffff" aria-label="白色"></button>
+<button class="theme-dot" data-theme="green" style="background:#d9e8cf" aria-label="护眼绿"></button>
+<button class="theme-dot" data-theme="pink" style="background:#fce9e6" aria-label="粉色"></button>
+<button class="theme-dot" data-theme="blue" style="background:#e3eaf2" aria-label="浅蓝"></button>
+</span>
 </div>
-<div id="mask"></div>
-<nav id="toc"><h2 id="tocTitle">目录</h2><div id="tocList"></div></nav>
-<main id="content"><p class="status" id="statusText">正在加载目录…</p></main>
-<div style="max-width:720px;margin:0 auto;padding:0 20px 40px"><div class="nav">
-<button id="prevBtn" disabled>← 上一章</button><button id="nextBtn" disabled>下一章 →</button>
-</div></div>
-<p class="footnote">内容由源站提供，本页仅做排版呈现（正文不经过机器人服务器存储）。若加载失败，可点上方「原站」直接在源站阅读。</p>
+</div>
 <script>
 (function(){
 const params = new URLSearchParams(location.search);
@@ -321,6 +349,10 @@ function renderChapter(){
   document.querySelectorAll(".toc-item").forEach((t, j) => t.classList.toggle("active", j === cur));
   document.getElementById("prevBtn").disabled = cur === 0;
   document.getElementById("nextBtn").disabled = cur === chapters.length - 1;
+  const prog = document.getElementById("progressText");
+  if (prog) prog.textContent = "第 " + (cur + 1) + " / " + chapters.length + " 章 · " + (chapters.length ? Math.round((cur + 1) / chapters.length * 100) : 0) + "%";
+  const bar = document.getElementById("progressBar");
+  if (bar) bar.style.width = (chapters.length ? ((cur + 1) / chapters.length * 100) : 0) + "%";
   window.scrollTo({ top: 0 });
   apply(); save();
 }
@@ -406,6 +438,18 @@ document.getElementById("fontMinus").onclick = () => { fontSize = Math.max(14, f
 document.getElementById("fontPlus").onclick = () => { fontSize = Math.min(26, fontSize + 1); apply(); save(); };
 document.getElementById("lineBtn").onclick = () => { lineH = lineH >= 2.2 ? 1.6 : +(lineH + 0.15).toFixed(2); apply(); save(); };
 document.getElementById("nightBtn").onclick = () => { document.body.classList.toggle("night"); apply(); save(); };
+// 主题切换：偏好存独立键 novel-theme，原有阅读进度对象不动
+const themeDots = document.querySelectorAll(".theme-dot");
+function applyTheme(t){
+  document.body.dataset.theme = t;
+  themeDots.forEach(d => d.classList.toggle("active", d.dataset.theme === t));
+  try { localStorage.setItem("novel-theme", t); } catch (e) {}
+}
+themeDots.forEach(d => { d.onclick = () => applyTheme(d.dataset.theme); });
+let savedTheme = "paper";
+try { savedTheme = localStorage.getItem("novel-theme") || "paper"; } catch (e) {}
+if (!["paper","white","green","pink","blue"].includes(savedTheme)) savedTheme = "paper";
+applyTheme(savedTheme);
 loadCatalog().then(() => {
   document.getElementById("tocTitle").textContent = "目录（共 " + chapters.length + " 章）";
   const tocList = document.getElementById("tocList");
