@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>小说阅读页 · 思兔直连样板</title>
+<style>
+:root{--bg:#fdfbf7;--fg:#2b2620;--muted:#8a8272;--line:#e8e0d2;--accent:#b07d3c}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Noto Serif SC",serif;-webkit-font-smoothing:antialiased}
+body.night{--bg:#171512;--fg:#cfc8bd;--muted:#8d867c;--line:#2e2a26;--accent:#d0a05e}
+header{position:sticky;top:0;background:var(--bg);border-bottom:1px solid var(--line);padding:12px 16px;z-index:10}
+header h1{font-size:17px;margin:0 0 2px}header .author{font-size:13px;color:var(--muted)}
+.toolbar{display:flex;gap:8px;padding:10px 16px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.toolbar button,.toolbar a{background:transparent;border:1px solid var(--line);color:var(--fg);border-radius:20px;padding:6px 12px;font-size:13px;text-decoration:none}
+#toc{position:fixed;inset:0 auto 0 0;width:min(300px,80vw);background:var(--bg);border-right:1px solid var(--line);transform:translateX(-105%);transition:transform .25s;z-index:20;overflow-y:auto;padding:16px}
+#toc.open{transform:none}#toc h2{font-size:15px;margin:0 0 10px}
+.toc-item{display:block;width:100%;text-align:left;background:none;border:0;border-bottom:1px solid var(--line);color:var(--fg);padding:9px 2px;font-size:14px}
+.toc-item.active{color:var(--accent);font-weight:700}
+main{max-width:720px;margin:0 auto;padding:20px 20px calc(88px + env(safe-area-inset-bottom))}
+.chapter h2{font-size:19px;margin:8px 0 18px}.chapter p{line-height:1.9;margin:0 0 1em;text-align:justify}
+.nav{display:flex;justify-content:space-between;gap:12px;margin:28px 0}
+.nav button{flex:1;border:1px solid var(--line);background:transparent;color:var(--fg);border-radius:12px;padding:12px;font-size:15px}
+.nav button:disabled{opacity:.35}
+#mask{position:fixed;inset:0;background:rgba(0,0,0,.35);display:none;z-index:15}
+#mask.show{display:block}
+.status{color:var(--muted);font-size:14px;line-height:1.8}
+.status button{background:transparent;border:1px solid var(--line);color:var(--fg);border-radius:20px;padding:6px 12px;font-size:13px}
+.footnote{max-width:720px;margin:0 auto;padding:0 20px 40px;color:var(--muted);font-size:12px;line-height:1.8}
+.footnote a{color:var(--accent)}
+</style></head>
+<body>
+<header><h1 id="bookTitle">加载中…</h1><div class="author" id="bookAuthor"></div></header>
+<div class="toolbar">
+<button id="tocBtn">📑 目录</button>
+<button id="fontMinus">A-</button><button id="fontPlus">A+</button>
+<button id="lineBtn">行距</button><button id="nightBtn">🌙 夜间</button>
+<a id="sourceLink" href="#" target="_blank" rel="noopener">思兔原站 ↗</a>
+</div>
+<div id="mask"></div>
+<nav id="toc"><h2 id="tocTitle">目录</h2><div id="tocList"></div></nav>
+<main id="content"><p class="status" id="statusText">正在从思兔加载目录…</p></main>
+<div style="max-width:720px;margin:0 auto;padding:0 20px 40px"><div class="nav">
+<button id="prevBtn" disabled>← 上一章</button><button id="nextBtn" disabled>下一章 →</button>
+</div></div>
+<p class="footnote">内容由思兔阅读提供，本页仅做排版呈现（浏览器直连思兔，不经过机器人服务器）。若加载失败，可点上方「思兔原站」直接在源站阅读。</p>
+<script>
+(function(){
+const params = new URLSearchParams(location.search);
+const site = params.get("site"), bookId = params.get("id");
+const BASE = "https://www.sto66.com";
+const statusEl = document.getElementById("statusText");
+const mainEl = document.getElementById("content");
+function fail(msg){
+  statusEl.innerHTML = "";
+  const p = document.createElement("p"); p.className = "status"; p.textContent = msg + " ";
+  const retry = document.createElement("button"); retry.textContent = "重试";
+  retry.onclick = () => location.reload();
+  const src = document.createElement("a"); src.href = BASE + "/book/" + bookId + ".html";
+  src.target = "_blank"; src.rel = "noopener"; src.textContent = "去思兔原站读";
+  p.appendChild(retry); p.appendChild(document.createTextNode(" "));
+  const wrap = document.createElement("span"); wrap.appendChild(src); p.appendChild(wrap);
+  statusEl.appendChild(p);
+}
+if (site !== "sto66" || !/^[A-Za-z0-9]+$/.test(bookId || "")) {
+  document.getElementById("bookTitle").textContent = "链接无效";
+  fail("这条样板链接只支持思兔（site=sto66），请回机器人重新搜书。");
+  return;
+}
+document.getElementById("sourceLink").href = BASE + "/book/" + bookId + ".html";
+const KEY = "novel-sto66-" + bookId + "-progress";
+let chapters = []; // {title, url, body}
+let cur = 0, fontSize = 19, lineH = 1.9;
+try {
+  const saved = JSON.parse(localStorage.getItem(KEY) || "null");
+  if (saved) {
+    fontSize = saved.fontSize || 19; lineH = saved.lineH || 1.9;
+    if (saved.night) document.body.classList.add("night");
+    if (Number.isInteger(saved.chapter)) cur = saved.chapter;
+  }
+} catch (e) {}
+function save(){ try { localStorage.setItem(KEY, JSON.stringify({chapter: cur, fontSize, lineH, night: document.body.classList.contains("night")})); } catch (e) {} }
+function apply(){
+  mainEl.style.fontSize = fontSize + "px";
+  mainEl.querySelectorAll(".chapter p").forEach(p => p.style.lineHeight = lineH);
+  document.getElementById("nightBtn").textContent = document.body.classList.contains("night") ? "☀️ 日间" : "🌙 夜间";
+}
+function esc(s){ return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+async function fetchDoc(url){
+  const res = await fetch(url, { headers: { "Accept": "text/html" } });
+  if (!res.ok) throw new Error("HTTP " + res.status);
+  const html = await res.text();
+  return new DOMParser().parseFromString(html, "text/html");
+}
+function parseTitleAuthor(doc, rawHtml){
+  let title = "", author = "";
+  const t = (doc.title || "").split("-")[0] || "";
+  const pm = t.match(/^(.*?)\(([^)]+)\)\s*$/);
+  if (pm) { title = pm[1].trim(); author = pm[2].trim(); }
+  else if (t) { title = t.replace(/全文免费阅读.*$/, "").trim(); }
+  if (!author) {
+    const am = rawHtml.match(/作者：([^<\n]{1,30})/);
+    if (am) author = am[1].trim();
+  }
+  return { title: title || "思兔小说", author: author || "" };
+}
+async function loadCatalog(){
+  const bookDoc = await fetchDoc(BASE + "/book/" + bookId + ".html");
+  const raw = bookDoc.documentElement.outerHTML;
+  const meta = parseTitleAuthor(bookDoc, raw);
+  document.getElementById("bookTitle").textContent = meta.title;
+  document.getElementById("bookAuthor").textContent = meta.author;
+  document.title = meta.title + " - 小说阅读页";
+  const seen = new Set();
+  let pageUrl = BASE + "/chapter/" + bookId + ".html";
+  for (let page = 0; page < 30 && pageUrl; page++) {
+    const doc = await fetchDoc(pageUrl);
+    const links = [...doc.querySelectorAll("a[href]")];
+    for (const a of links) {
+      const href = a.getAttribute("href") || "";
+      const m = href.match(new RegExp("^/chapter/" + bookId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "/([^/]+)\\.html$"));
+      if (!m || /^\d+$/.test(m[1])) continue; // 纯数字是分页链接（/2.html），不是章节
+      const text = (a.textContent || "").trim();
+      if (!text || text === "上一页" || text === "下一页") continue;
+      const abs = BASE + href;
+      if (seen.has(abs)) continue;
+      seen.add(abs);
+      chapters.push({ title: text, url: abs, body: null });
+    }
+    const next = links.find(a => (a.textContent || "").trim() === "下一页");
+    pageUrl = next ? (new URL(next.getAttribute("href"), BASE).toString()) : null;
+  }
+  if (!chapters.length) throw new Error("目录为空");
+  document.getElementById("tocTitle").textContent = "目录（共 " + chapters.length + " 章）";
+  const tocList = document.getElementById("tocList");
+  chapters.forEach((c, i) => {
+    const b = document.createElement("button");
+    b.className = "toc-item"; b.dataset.ch = i; b.textContent = c.title;
+    b.onclick = () => { show(i); closeToc(); };
+    tocList.appendChild(b);
+  });
+  if (cur >= chapters.length) cur = 0;
+}
+function renderChapter(){
+  const c = chapters[cur];
+  mainEl.innerHTML = "";
+  const sec = document.createElement("section");
+  sec.className = "chapter";
+  const h2 = document.createElement("h2"); h2.textContent = c.title;
+  sec.appendChild(h2);
+  (c.body || []).forEach(t => {
+    const p = document.createElement("p"); p.textContent = t; sec.appendChild(p);
+  });
+  mainEl.appendChild(sec);
+  document.querySelectorAll(".toc-item").forEach((t, j) => t.classList.toggle("active", j === cur));
+  document.getElementById("prevBtn").disabled = cur === 0;
+  document.getElementById("nextBtn").disabled = cur === chapters.length - 1;
+  window.scrollTo({ top: 0 });
+  apply(); save();
+}
+async function show(i){
+  cur = Math.min(Math.max(i, 0), chapters.length - 1);
+  const c = chapters[cur];
+  if (!c.body) {
+    mainEl.innerHTML = "";
+    const p = document.createElement("p"); p.className = "status"; p.textContent = "正在加载「" + c.title + "」…";
+    mainEl.appendChild(p);
+    try {
+      const doc = await fetchDoc(c.url);
+      const box = doc.querySelector("#content.readcontent") || doc.querySelector("#content");
+      if (!box) throw new Error("正文解析失败");
+      const paras = [...box.querySelectorAll("p")].map(p => p.textContent.trim()).filter(Boolean);
+      c.body = paras.length ? paras : box.textContent.split("\n").map(s => s.trim()).filter(Boolean);
+      if (!c.body.length) throw new Error("正文为空");
+    } catch (e) {
+      mainEl.innerHTML = "";
+      const p = document.createElement("p"); p.className = "status";
+      p.textContent = "本章加载失败（" + (e.message || e) + "），可去思兔原站读本章。";
+      mainEl.appendChild(p);
+      return;
+    }
+  }
+  renderChapter();
+}
+function closeToc(){
+  document.getElementById("toc").classList.remove("open");
+  document.getElementById("mask").classList.remove("show");
+}
+document.getElementById("tocBtn").onclick = () => {
+  document.getElementById("toc").classList.add("open");
+  document.getElementById("mask").classList.add("show");
+};
+document.getElementById("mask").onclick = closeToc;
+document.getElementById("prevBtn").onclick = () => show(cur - 1);
+document.getElementById("nextBtn").onclick = () => show(cur + 1);
+document.getElementById("fontMinus").onclick = () => { fontSize = Math.max(14, fontSize - 1); apply(); save(); };
+document.getElementById("fontPlus").onclick = () => { fontSize = Math.min(26, fontSize + 1); apply(); save(); };
+document.getElementById("lineBtn").onclick = () => { lineH = lineH >= 2.2 ? 1.6 : +(lineH + 0.15).toFixed(2); apply(); save(); };
+document.getElementById("nightBtn").onclick = () => { document.body.classList.toggle("night"); apply(); save(); };
+loadCatalog().then(() => { statusEl.remove(); show(cur); apply(); })
+  .catch(e => { document.getElementById("bookTitle").textContent = "加载失败"; fail("目录加载失败（" + (e.message || e) + "）。"); });
+})();
+</script>
+</body></html>
