@@ -103,7 +103,7 @@ sourceLinkEl.href = sourceUrl;
 sourceLinkEl.textContent = sourceLabel + " ↗";
 if (footnoteEl) {
   footnoteEl.textContent = site === "sto66"
-    ? "内容由思兔阅读提供，本页仅做排版呈现（浏览器直连思兔，不经过机器人服务器）。若加载失败，可点上方「思兔原站」直接在源站阅读。"
+    ? "内容由思兔阅读提供，本页经中转 Worker 取源站内容排版呈现（正文不经过机器人服务器存储）。若加载失败，可点上方「思兔原站」直接在源站阅读。"
     : "内容由" + SITE_NAMES[site] + "提供，本页经中转 Worker 取源站内容排版呈现（正文不经过机器人服务器存储）。若加载失败，可点上方「" + sourceLabel + "」直接在源站阅读。";
 }
 statusEl.textContent = "正在从" + SITE_NAMES[site] + "加载目录…";
@@ -132,10 +132,19 @@ function apply(){
 function esc(s){ return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
 async function fetchDoc(url, viaWorker){
   const target = viaWorker ? WORKER + "?u=" + encodeURIComponent(url) : url;
-  const res = await fetch(target, { headers: { "Accept": "text/html" } });
-  if (!res.ok) throw new Error("HTTP " + res.status);
-  const html = await res.text();
-  return new DOMParser().parseFromString(html, "text/html");
+  let lastErr = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const res = await fetch(target, { headers: { "Accept": "text/html" } });
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      const html = await res.text();
+      return new DOMParser().parseFromString(html, "text/html");
+    } catch (e) {
+      lastErr = e;
+      if (attempt < 2) await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
+    }
+  }
+  throw lastErr;
 }
 function absUrl(href, base){
   try { return new URL(href, base).toString(); } catch (e) { return ""; }
