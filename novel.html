@@ -81,6 +81,26 @@ const paramAuthor = params.get("author") || "";
 const WORKER = "https://book-proxy.qqbookproxy.workers.dev/";
 const SITE_NAMES = { sto66: "思兔", kudushu: "苦读书", suduguu: "速读谷", booksky: "快眼", pinshuzhai: "品书斋" };
 const SITE_HOSTS = { kudushu: ["www.kudushu.org"], suduguu: ["www.suduguu.com"], booksky: ["www.xbotaodz.info"], pinshuzhai: ["www.pinshuzhai.com"] };
+// 同书他站备用（机器人选书时附在链接 alt 参数里，JSON）：目录加载失败时一键换站续读同一本
+const alts = params.getAll("alt").map((x) => { try { const o = JSON.parse(x); return (o && SITE_NAMES[o.site]) ? o : null; } catch (e) { return null; } }).filter(Boolean)
+  .filter((o) => o.site !== site && (o.site === "sto66" ? !!o.id : !!o.url));
+function altReaderUrl(alt) {
+  const qp = new URLSearchParams();
+  qp.set("site", alt.site);
+  if (alt.site === "sto66") qp.set("id", alt.id);
+  else {
+    qp.set("url", alt.url);
+    if (alt.dir) qp.set("dir", alt.dir);
+  }
+  if (alt.title) qp.set("title", alt.title);
+  if (alt.author) qp.set("author", alt.author);
+  // 其余备用（含当前这本，方便再切回来）一并带上
+  const rest = [{ site, id: bookId || undefined, url: bookUrl || undefined, dir: dirParam || undefined, title: paramTitle || undefined, author: paramAuthor || undefined }];
+  Object.keys(rest[0]).forEach(k => rest[0][k] === undefined && delete rest[0][k]);
+  alts.forEach((o) => { if (o.site !== alt.site) rest.push(o); });
+  rest.forEach((o) => qp.append("alt", JSON.stringify(o)));
+  return WORKER + "?" + qp.toString();
+}
 const statusEl = document.getElementById("statusText");
 const mainEl = document.getElementById("content");
 const sourceLinkEl = document.getElementById("sourceLink");
@@ -461,7 +481,26 @@ loadCatalog().then(() => {
   });
   if (cur >= chapters.length) cur = 0;
   statusEl.remove(); show(cur); apply();
-}).catch(e => { document.getElementById("bookTitle").textContent = "加载失败"; fail("目录加载失败（" + (e.message || e) + "）。"); });
+}).catch(e => {
+  document.getElementById("bookTitle").textContent = "加载失败";
+  fail("目录加载失败（" + (e.message || e) + "）。");
+  if (alts.length) {
+    const wrap = document.createElement("div");
+    wrap.style.cssText = "margin-top:14px;text-align:center";
+    const tip = document.createElement("p");
+    tip.className = "status"; tip.style.padding = "0";
+    tip.textContent = "当前站加载失败，换个站读同一本：";
+    wrap.appendChild(tip);
+    alts.forEach((o) => {
+      const b = document.createElement("button");
+      b.textContent = "换" + (SITE_NAMES[o.site] || o.site) + "读这本";
+      b.style.cssText = "background:transparent;border:1px solid var(--line);color:var(--fg);border-radius:20px;padding:8px 14px;font-size:13px;margin:4px";
+      b.onclick = () => { location.href = altReaderUrl(o); };
+      wrap.appendChild(b);
+    });
+    statusEl.appendChild(wrap);
+  }
+});
 })();
 </script>
 
