@@ -693,8 +693,9 @@ async function show(i, page = 0){
 // ── 菜单与面板（新 UI 层）──
 // 点屏幕出/藏菜单：只认「短按且几乎没动」的轻点，滑动选字不触发
 let downX = 0, downY = 0, downT = 0;
-mainEl.addEventListener("pointerdown", (e) => { downX = e.clientX; downY = e.clientY; downT = Date.now(); });
-mainEl.addEventListener("pointerup", (e) => {
+document.body.addEventListener("pointerdown", (e) => { downX = e.clientX; downY = e.clientY; downT = Date.now(); });
+document.body.addEventListener("pointerup", (e) => {
+  if (e.target.closest("#topbar, #bottombar, #sheet, #catalog, #backdrop, button, a, input")) return;
   if (document.getElementById("sheet").classList.contains("open")) { closeSheet(); return; }
   if (pageMode) {
     const dx = e.clientX - downX, dy = e.clientY - downY;
@@ -705,7 +706,6 @@ mainEl.addEventListener("pointerup", (e) => {
   }
   if (Date.now() - downT > 300) return;
   if (Math.abs(e.clientX - downX) > 10 || Math.abs(e.clientY - downY) > 10) return;
-  if (e.target.closest("button, a, input")) return;
   if (pageMode) {
     const x = e.clientX / window.innerWidth;
     if (x < 0.33) prevPage();
