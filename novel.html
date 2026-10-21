@@ -349,11 +349,15 @@ async function loadChapterBody(c){
     c.body = parts;
   } else if (site === "booksky") {
     const doc = await fetchDoc(c.url, true);
-    c.body = extractParas(doc.querySelector("#chaptercontent"));
+    c.body = extractParas(doc.querySelector("#chaptercontent"), /最新网址|xbotaodz\.info/);
   } else if (site === "pinshuzhai") {
     const doc = await fetchDoc(c.url, true);
     const box = doc.querySelector(".chapterbox") || doc.querySelector(".chapterbo") || doc.querySelector("article.shid") || longestTextEl(doc.querySelector("#chapter"));
     c.body = extractParas(box, /pinshuzhai\.com|章节列表|^(上一章|下一章)$/);
+    if (c.body.length && c.body[0].startsWith("品书斋")) {
+      c.body[0] = c.body[0].slice(3).trim();
+      if (!c.body[0]) c.body.shift();
+    }
   } else {
     throw new Error("书源不支持");
   }
