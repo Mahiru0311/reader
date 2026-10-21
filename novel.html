@@ -187,14 +187,14 @@ function setMeta(title, author){
 }
 async function loadSto66Catalog(){
   const BASE = "https://www.sto66.com";
-  const bookDoc = await fetchDoc(BASE + "/book/" + bookId + ".html", false);
+  const bookDoc = await fetchDoc(BASE + "/book/" + bookId + ".html", true);
   const raw = bookDoc.documentElement.outerHTML;
   const meta = parseTitleAuthor(bookDoc, raw);
   setMeta(meta.title, meta.author);
   const seen = new Set();
   let pageUrl = BASE + "/chapter/" + bookId + ".html";
   for (let page = 0; page < 30 && pageUrl; page++) {
-    const doc = await fetchDoc(pageUrl, false);
+    const doc = await fetchDoc(pageUrl, true);
     const links = [...doc.querySelectorAll("a[href]")];
     for (const a of links) {
       const href = a.getAttribute("href") || "";
@@ -317,7 +317,7 @@ function renderChapter(){
 }
 async function loadChapterBody(c){
   if (site === "sto66") {
-    const doc = await fetchDoc(c.url, false);
+    const doc = await fetchDoc(c.url, true);
     const box = doc.querySelector("#content.readcontent") || doc.querySelector("#content");
     if (!box) throw new Error("正文解析失败");
     const paras = [...box.querySelectorAll("p")].map(p => p.textContent.trim()).filter(Boolean);
