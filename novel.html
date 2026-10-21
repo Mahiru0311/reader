@@ -342,6 +342,40 @@ function setMeta(title, author){
   document.getElementById("bookTitle").textContent = title;
   document.title = title + " - 小说阅读页";
 }
+// 从“下一页”链接推导分页规律：第 2 页 URL 里最后一个数字换成 N 即第 N 页
+// （速读谷 /448/p-2.html、思兔 /chapter/<id>/2.html 均适用）；推导失败返回 null，调用方退回逐页顺爬
+function derivePageUrl(firstUrl, nextUrl){
+  try {
+    if (!nextUrl) return null;
+    nextUrl = nextUrl.split("#")[0];
+    const m = nextUrl.match(/^(.*?)(\d+)([^0-9]*)$/);
+    if (!m || m[2] !== "2") return null;
+    const dir = firstUrl.endsWith("/") ? firstUrl : firstUrl.slice(0, firstUrl.lastIndexOf("/") + 1);
+    if (!nextUrl.startsWith(dir)) return null;
+    return (n) => m[1] + n + m[3];
+  } catch (e) { return null; }
+}
+function nextPageHref(doc){
+  const a = [...doc.querySelectorAll("a")].find(x => (x.textContent || "").trim() === "下一页");
+  return a ? a.getAttribute("href") || "" : "";
+}
+function extractSto66Page(doc, seen){
+  const BASE = "https://www.sto66.com";
+  const out = [];
+  const links = [...doc.querySelectorAll("a[href]")];
+  for (const a of links) {
+    const href = a.getAttribute("href") || "";
+    const m = href.match(new RegExp("^/chapter/" + bookId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "/([^/]+)\\.html$"));
+    if (!m || /^\d+$/.test(m[1])) continue;
+    const text = (a.textContent || "").trim();
+    if (!text || text === "上一页" || text === "下一页") continue;
+    const abs = BASE + href;
+    if (seen.has(abs)) continue;
+    seen.add(abs);
+    out.push({ title: text, url: abs, body: null });
+  }
+  return out;
+}
 async function loadSto66Catalog(){
   const BASE = "https://www.sto66.com";
   const bookDoc = await fetchDoc(BASE + "/book/" + bookId + ".html", true);
@@ -349,23 +383,39 @@ async function loadSto66Catalog(){
   const meta = parseTitleAuthor(bookDoc, raw);
   setMeta(meta.title, meta.author);
   const seen = new Set();
-  let pageUrl = BASE + "/chapter/" + bookId + ".html";
-  for (let page = 0; page < 30 && pageUrl; page++) {
-    const doc = await fetchDoc(pageUrl, true);
-    const links = [...doc.querySelectorAll("a[href]")];
-    for (const a of links) {
-      const href = a.getAttribute("href") || "";
-      const m = href.match(new RegExp("^/chapter/" + bookId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "/([^/]+)\\.html$"));
-      if (!m || /^\d+$/.test(m[1])) continue;
-      const text = (a.textContent || "").trim();
-      if (!text || text === "上一页" || text === "下一页") continue;
-      const abs = BASE + href;
-      if (seen.has(abs)) continue;
-      seen.add(abs);
-      chapters.push({ title: text, url: abs, body: null });
+  const firstUrl = BASE + "/chapter/" + bookId + ".html";
+  const firstDoc = await fetchDoc(firstUrl, true);
+  extractSto66Page(firstDoc, seen).forEach(c => chapters.push(c));
+  const nextHref = nextPageHref(firstDoc);
+  const nextUrl = nextHref ? (new URL(nextHref, BASE).toString()) : "";
+  const pageUrlFor = derivePageUrl(firstUrl, nextUrl);
+  if (!pageUrlFor) {
+    // 推导失败：退回逐页顺爬（原逻辑）
+    let pageUrl = nextUrl;
+    for (let page = 1; page < 30 && pageUrl; page++) {
+      const doc = await fetchDoc(pageUrl, true);
+      extractSto66Page(doc, seen).forEach(c => chapters.push(c));
+      const nx = nextPageHref(doc);
+      pageUrl = nx ? (new URL(nx, BASE).toString()) : "";
     }
-    const next = links.find(a => (a.textContent || "").trim() === "下一页");
-    pageUrl = next ? (new URL(next.getAttribute("href"), BASE).toString()) : null;
+  } else {
+    // 并行分批（每批 6 页），按页码顺序拼回；某页无“下一页”即最后一页，丢弃同批后续 speculative 页
+    let pageNo = 2;
+    while (pageNo <= 30) {
+      const batchNos = [];
+      for (let k = 0; k < 6 && pageNo + k <= 30; k++) batchNos.push(pageNo + k);
+      const results = await Promise.allSettled(batchNos.map(n => fetchDoc(pageUrlFor(n), true)));
+      let stop = false;
+      for (let j = 0; j < batchNos.length; j++) {
+        const r = results[j];
+        if (r.status !== "fulfilled") throw (r.reason || new Error("目录加载失败"));
+        const doc = r.value;
+        extractSto66Page(doc, seen).forEach(c => chapters.push(c));
+        if (!nextPageHref(doc)) { stop = true; break; }
+      }
+      if (stop || batchNos.length < 6) break;
+      pageNo += batchNos.length;
+    }
   }
   if (!chapters.length) throw new Error("目录为空");
 }
@@ -387,24 +437,53 @@ async function loadKudushuCatalog(){
   });
   if (!chapters.length) throw new Error("目录为空");
 }
+function extractSuduguuPage(doc, pageUrl, seen){
+  const out = [];
+  const list = doc.querySelector("#list");
+  const anchors = list ? [...list.querySelectorAll("a[href]")] : [...doc.querySelectorAll("a[href]")];
+  anchors.forEach(a => {
+    const abs = absUrl(a.getAttribute("href") || "", pageUrl);
+    if (!/^https:\/\/www\.suduguu\.com\/\d+\/\d+\.html$/.test(abs)) return;
+    const text = (a.textContent || "").trim();
+    if (!text || text === "开始阅读" || seen.has(abs)) return;
+    seen.add(abs);
+    out.push({ title: text, url: abs, body: null });
+  });
+  return out;
+}
 async function loadSuduguuCatalog(){
   setMeta(paramTitle || "速读谷小说", paramAuthor || "");
   const seen = new Set();
-  let pageUrl = bookUrl;
-  for (let page = 0; page < 30 && pageUrl; page++) {
-    const doc = await fetchDoc(pageUrl, true);
-    const list = doc.querySelector("#list");
-    const anchors = list ? [...list.querySelectorAll("a[href]")] : [...doc.querySelectorAll("a[href]")];
-    anchors.forEach(a => {
-      const abs = absUrl(a.getAttribute("href") || "", pageUrl);
-      if (!/^https:\/\/www\.suduguu\.com\/\d+\/\d+\.html$/.test(abs)) return;
-      const text = (a.textContent || "").trim();
-      if (!text || text === "开始阅读" || seen.has(abs)) return;
-      seen.add(abs);
-      chapters.push({ title: text, url: abs, body: null });
-    });
-    const next = [...doc.querySelectorAll("a")].find(a => (a.textContent || "").trim() === "下一页");
-    pageUrl = next ? absUrl(next.getAttribute("href"), pageUrl) : "";
+  const firstDoc = await fetchDoc(bookUrl, true);
+  extractSuduguuPage(firstDoc, bookUrl, seen).forEach(c => chapters.push(c));
+  const nextUrl = absUrl(nextPageHref(firstDoc), bookUrl);
+  const pageUrlFor = derivePageUrl(bookUrl, nextUrl);
+  if (!pageUrlFor) {
+    // 推导失败：退回逐页顺爬（原逻辑）
+    let pageUrl = nextUrl;
+    for (let page = 1; page < 30 && pageUrl; page++) {
+      const doc = await fetchDoc(pageUrl, true);
+      extractSuduguuPage(doc, pageUrl, seen).forEach(c => chapters.push(c));
+      pageUrl = absUrl(nextPageHref(doc), pageUrl);
+    }
+  } else {
+    // 并行分批（每批 6 页），按页码顺序拼回；某页无“下一页”即最后一页，丢弃同批后续 speculative 页
+    let pageNo = 2;
+    while (pageNo <= 30) {
+      const batchNos = [];
+      for (let k = 0; k < 6 && pageNo + k <= 30; k++) batchNos.push(pageNo + k);
+      const results = await Promise.allSettled(batchNos.map(n => fetchDoc(pageUrlFor(n), true)));
+      let stop = false;
+      for (let j = 0; j < batchNos.length; j++) {
+        const r = results[j];
+        if (r.status !== "fulfilled") throw (r.reason || new Error("目录加载失败"));
+        const doc = r.value;
+        extractSuduguuPage(doc, pageUrlFor(batchNos[j]), seen).forEach(c => chapters.push(c));
+        if (!nextPageHref(doc)) { stop = true; break; }
+      }
+      if (stop || batchNos.length < 6) break;
+      pageNo += batchNos.length;
+    }
   }
   if (!chapters.length) throw new Error("目录为空");
 }
