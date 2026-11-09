@@ -309,24 +309,34 @@ async function loadBaoziCatalog(){
     if (t) { titleEl.textContent = t; document.title = t + " - 漫画阅读页"; }
   }
   const names = [];
+  // 与机器人 parseBaoziChapters 保持同一去重+去尾规则，否则目录下标与机器人发的 ch（站内页序下标）会对不上：
+  // 实测同一详情页有三处重复“公告”+ 尾部“更多推荐：”，不去重去尾会让 170 话之后的下标错位（点到的不是选的那话）。
+  const dedupTrim = (list) => {
+    const out = [];
+    const seen = new Set();
+    for (const n of list) if (!seen.has(n)) { seen.add(n); out.push(n); }
+    while (out.length && !/\d/.test(out[out.length - 1]) && !/^(番外|第|话|集|回|章|序)/.test(out[out.length - 1])) out.pop();
+    return out;
+  };
   const collect = (root) => {
     if (!root) return;
     root.querySelectorAll("div.comics-chapters > a > div > span").forEach(s => {
-      const t = (s.textContent || "").trim();
+      const t = (s.textContent || "").replace(/\s+/g, " ").trim(); // 与机器人 cleanHtml 同义：内部空白也折成一个空格
       if (t) names.push(t);
     });
   };
   collect(doc.querySelector("div#chapter-items"));
   collect(doc.querySelector("div#chapters_other_list"));
   if (!names.length) {
-    // 兜底：容器选择器失效时全页抓章节名去重（顺序以 Venera 源为准，反转）
-    const seen = new Set();
+    // 兜底：容器选择器失效时全页抓章节名（与机器人兜底同义，不反转）
     doc.querySelectorAll("div.comics-chapters > a > div > span").forEach(s => {
-      const t = (s.textContent || "").trim();
-      if (t && !seen.has(t)) { seen.add(t); names.push(t); }
+      const t = (s.textContent || "").replace(/\s+/g, " ").trim();
+      if (t) names.push(t);
     });
-    names.reverse();
   }
+  const clean = dedupTrim(names);
+  names.length = 0;
+  clean.forEach(n => names.push(n));
   // 注意：两个容器本身就是正序（01、02……），与 page_direct 的 chapter_slot 一致
   // （实测 slot 0 = 第 01 话、slot 末位 = 最新一话），因此这里不反转。
   chapters = names.map(n => ({ name: n }));
