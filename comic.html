@@ -1,0 +1,587 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>漫画阅读页</title>
+<style>
+/* —— 设计系统与小说阅读页 novel_v5.html 完全一致：同一套主题变量、毛玻璃顶栏/底栏、底部设置抽屉、全屏目录 —— */
+:root{--bg:#ffffff;--fg:#000000;--muted:#8a8a8e;--line:#c6c6c8;--accent:#007aff;--card:#ffffff;--bar:#ffffff;--track:#e5e5ea;--sheet:#f2f2f7;--seg:#e5e5ea}
+body[data-theme="white"]{--bg:#ffffff;--fg:#000000;--muted:#8a8a8e;--line:#c6c6c8;--accent:#007aff;--card:#ffffff;--bar:#ffffff;--track:#e5e5ea;--sheet:#f2f2f7;--seg:#e5e5ea}
+body[data-theme="paper"]{--bg:#f7f1e3;--fg:#1c1c1e;--muted:#8a8a8e;--line:#e6dcc8;--accent:#007aff;--card:#fffdf8;--bar:#fffdf8;--track:#e6dcc8;--sheet:#efe8d8;--seg:#e6dcc8}
+body[data-theme="green"]{--bg:#e6f0df;--fg:#1c1c1e;--muted:#8a8a8e;--line:#c2d4b4;--accent:#007aff;--card:#eef5e9;--bar:#eef5e9;--track:#c2d4b4;--sheet:#ddebd2;--seg:#c2d4b4}
+body[data-theme="pink"]{--bg:#fdf0ef;--fg:#1c1c1e;--muted:#8a8a8e;--line:#f0d2cd;--accent:#007aff;--card:#fef6f5;--bar:#fef6f5;--track:#f0d2cd;--sheet:#f9e2de;--seg:#f0d2cd}
+body[data-theme="blue"]{--bg:#eef3f8;--fg:#1c1c1e;--muted:#8a8a8e;--line:#cbd6e2;--accent:#007aff;--card:#f4f8fb;--bar:#f4f8fb;--track:#cbd6e2;--sheet:#e2eaf2;--seg:#cbd6e2}
+body.night{--bg:#000000;--fg:#ebebf5;--muted:#8e8e93;--line:#38383a;--accent:#0a84ff;--card:#1c1c1e;--bar:#1c1c1e;--track:#2c2c2e;--sheet:#1c1c1e;--seg:#2c2c2e}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","SF Pro Display","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;-webkit-font-smoothing:antialiased;-webkit-tap-highlight-color:transparent;transition:background .25s,color .25s;overflow:hidden;height:100dvh}
+/* 亮度遮罩：盖在内容上、菜单之下，调亮度时菜单保持清晰 */
+#dimOverlay{position:fixed;inset:0;background:#000;opacity:0;pointer-events:none;z-index:5}
+/* 顶部导航：平时藏起，点屏幕才滑出 */
+#topbar{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:center;padding:calc(12px + env(safe-area-inset-top)) 16px 12px;background:var(--bar);background:color-mix(in srgb,var(--bar) 82%,transparent);-webkit-backdrop-filter:blur(20px) saturate(180%);backdrop-filter:blur(20px) saturate(180%);border-bottom:.5px solid var(--line);transform:translateY(-105%);transition:transform .28s ease}
+body.chrome #topbar{transform:none}
+#topbar button{background:transparent;border:0;color:var(--accent);font-size:17px;padding:6px 4px}
+#topbar h1{flex:1;text-align:center;font-size:17px;font-weight:600;margin:0;letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* 漫画舞台：一页一屏，图片居中 */
+#stage{position:fixed;inset:0;z-index:1;display:flex;align-items:center;justify-content:center;background:var(--bg)}
+#pageImg{display:block;max-width:100%;max-height:100%;opacity:0;transition:opacity .18s ease;user-select:none}
+/* 适应宽度：以屏宽为准（桌面端封顶 780px），高图完整显示；适应高度：以屏高为准，宽图看得更大 */
+body.fit-width #pageImg{width:min(100vw,780px);height:100dvh;object-fit:contain}
+body.fit-height #pageImg{width:100vw;height:100dvh;object-fit:contain}
+/* 状态浮层：加载中 / 失败提示，居中显示 */
+#stageStatus{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:6;max-width:82vw;background:var(--card);border:.5px solid var(--line);border-radius:14px;padding:14px 18px;color:var(--fg);font-size:15px;line-height:1.6;text-align:center;box-shadow:0 4px 16px rgba(0,0,0,.12);display:none}
+#stageStatus.show{display:block}
+#stageStatus a{color:var(--accent);text-decoration:none}
+/* 致命错误（参数无效等）：整页居中显示 */
+#fatal{position:fixed;inset:0;z-index:6;display:none;align-items:center;justify-content:center;padding:24px;background:var(--bg)}
+#fatal.show{display:flex}
+/* 底部菜单：进度滑块 + 上一话/进度/下一话，平时藏起 */
+#bottombar{position:fixed;left:0;right:0;bottom:0;z-index:100;background:var(--bar);background:color-mix(in srgb,var(--bar) 82%,transparent);-webkit-backdrop-filter:blur(20px) saturate(180%);backdrop-filter:blur(20px) saturate(180%);border-top:.5px solid var(--line);padding:14px 16px calc(14px + env(safe-area-inset-bottom));transform:translateY(105%);transition:transform .28s ease}
+body.chrome #bottombar{transform:none}
+#chapterSlider{width:100%;margin:0 0 12px}
+.barrow{display:flex;align-items:center;gap:8px}
+.barrow button{background:transparent;border:0;color:var(--accent);font-size:16px;padding:8px 10px}
+.barrow button:disabled{color:var(--muted);opacity:.6}
+.barrow span{flex:1;text-align:center;font-size:13px;color:var(--muted);white-space:nowrap}
+/* 滑块：iOS 风格细轨 + 白圆钮 */
+input[type=range]{-webkit-appearance:none;appearance:none;height:4px;border-radius:2px;background:var(--track);outline:none}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:24px;height:24px;border-radius:50%;background:#fff;border:.5px solid rgba(0,0,0,.12);box-shadow:0 1px 4px rgba(0,0,0,.25)}
+input[type=range]::-moz-range-thumb{width:24px;height:24px;border-radius:50%;background:#fff;border:.5px solid rgba(0,0,0,.12);box-shadow:0 1px 4px rgba(0,0,0,.25)}
+/* 设置面板：底部弹出卡片 */
+#backdrop{position:fixed;inset:0;background:rgba(0,0,0,.4);display:none;z-index:150}
+#backdrop.show{display:block}
+#sheet{position:fixed;left:0;right:0;bottom:0;z-index:160;background:var(--sheet);border-radius:16px 16px 0 0;padding:10px 16px calc(20px + env(safe-area-inset-bottom));max-height:82vh;overflow-y:auto;transform:translateY(105%);transition:transform .3s ease}
+#sheet.open{transform:none}
+.grabber{width:36px;height:5px;border-radius:3px;background:var(--muted);opacity:.5;margin:2px auto 10px}
+.sheethead{display:flex;align-items:center;margin-bottom:14px}
+.sheethead h2{flex:1;text-align:center;font-size:17px;font-weight:600;margin:0}
+.sheethead button{background:transparent;border:0;color:var(--accent);font-size:17px;padding:6px 4px}
+.sec{margin-bottom:18px}
+.sec h3{font-size:13px;font-weight:400;color:var(--muted);margin:0 0 8px;padding-left:4px}
+.group{background:var(--card);border-radius:12px;padding:4px 16px}
+.row{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:.5px solid var(--line)}
+.row:last-child{border-bottom:0}
+.row .label{font-size:16px;flex:0 0 auto}
+.row input[type=range]{flex:1}
+.row .val{font-size:14px;color:var(--muted);min-width:44px;text-align:right}
+.row a{color:var(--accent);text-decoration:none;font-size:16px;flex:1}
+.row .chev{color:var(--muted);font-size:18px}
+/* 分段选择：iOS 风格 */
+.seg{display:flex;background:var(--seg);border-radius:9px;padding:2px;flex:1}
+.seg button{flex:1;border:0;background:transparent;color:var(--fg);font-size:14px;padding:7px 4px;border-radius:7px}
+.seg button.on{background:var(--card);box-shadow:0 1px 3px rgba(0,0,0,.2);font-weight:600}
+/* 开关：iOS 风格 */
+.switch{position:relative;width:51px;height:31px;flex:0 0 auto;-webkit-appearance:none;appearance:none;background:var(--track);border-radius:16px;outline:none;transition:background .2s}
+.switch:checked{background:#34c759}
+.switch::after{content:"";position:absolute;top:2px;left:2px;width:27px;height:27px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.3);transition:left .2s}
+.switch:checked::after{left:22px}
+/* 主题圆点 */
+.themes{display:flex;gap:12px;flex:1;justify-content:space-between;padding:6px 0}
+.theme-dot{width:30px;height:30px;border-radius:50%;border:.5px solid var(--line);padding:0;cursor:pointer}
+.theme-dot.active{box-shadow:0 0 0 2px var(--card),0 0 0 4px var(--accent)}
+/* 全屏目录：整页滑出，带搜索 */
+#catalog{position:fixed;inset:0;z-index:200;background:var(--bg);transform:translateY(100%);transition:transform .3s ease;display:flex;flex-direction:column}
+#catalog.open{transform:none}
+.cathead{padding:calc(12px + env(safe-area-inset-top)) 16px 10px;background:var(--bar);background:color-mix(in srgb,var(--bar) 82%,transparent);-webkit-backdrop-filter:blur(20px) saturate(180%);backdrop-filter:blur(20px) saturate(180%);border-bottom:.5px solid var(--line)}
+.cathead .top{display:flex;align-items:center;margin-bottom:10px}
+.cathead .top button{background:transparent;border:0;color:var(--accent);font-size:17px;padding:6px 4px}
+.cathead .top h2{flex:1;text-align:center;font-size:17px;font-weight:600;margin:0}
+.cathead input{width:100%;border:0;border-radius:10px;background:var(--seg);color:var(--fg);font-size:16px;padding:9px 12px;outline:none}
+.cathead input::placeholder{color:var(--muted)}
+#tocList{flex:1;overflow-y:auto}
+.toc-item{display:block;width:100%;text-align:left;background:none;border:0;border-bottom:.5px solid var(--line);color:var(--fg);padding:13px 18px;font-size:16px;line-height:1.5}
+.toc-item.active{color:var(--accent);font-weight:600}
+/* 状态与说明 */
+.status{color:var(--muted);font-size:14px;line-height:1.8;text-align:center;padding:60px 0}
+.retry{background:var(--accent);border:0;color:#fff;border-radius:10px;padding:8px 16px;font-size:15px;font-weight:600}
+.status a{color:var(--accent);text-decoration:none}
+/* 页脚说明：只在菜单打开时显示，贴在底栏上方 */
+.footnote{position:fixed;left:0;right:0;bottom:calc(96px + env(safe-area-inset-bottom));z-index:90;max-width:680px;margin:0 auto;padding:0 20px;color:var(--muted);font-size:12px;line-height:1.8;text-align:center;display:none;pointer-events:none}
+body.chrome .footnote{display:block}
+/* 页码指示：菜单藏起时显示在底部中央 */
+#pageIndicator{position:fixed;left:50%;bottom:14px;transform:translateX(-50%);z-index:90;font-size:12px;color:var(--muted);pointer-events:none;display:none}
+body.ready:not(.chrome) #pageIndicator{display:block}
+.hidden{display:none!important}
+</style></head>
+<body>
+<div id="dimOverlay"></div>
+<nav id="topbar"><button id="topTocBtn">目录</button><h1 id="comicTitle">加载中…</h1><button id="aaBtn">Aa</button></nav>
+<main id="stage"><img id="pageImg" referrerpolicy="no-referrer" draggable="false" alt=""></main>
+<div id="stageStatus"><span id="stageStatusText"></span> <button id="stageRetry" class="retry hidden">重试</button></div>
+<div id="fatal"><p class="status" id="fatalText"></p></div>
+<div id="pageIndicator"></div>
+<p class="footnote" id="footnoteText"></p>
+<nav id="bottombar">
+<input type="range" id="chapterSlider" min="0" max="0" value="0" step="1">
+<div class="barrow"><button id="prevBtn" disabled>‹ 上一话</button><span id="progressText">-- / --</span><button id="nextBtn" disabled>下一话 ›</button></div>
+</nav>
+<div id="backdrop"></div>
+<section id="sheet">
+<div class="grabber"></div>
+<div class="sheethead"><span style="width:44px"></span><h2>设置</h2><button id="sheetDone">完成</button></div>
+<div class="sec"><h3>主题</h3><div class="group"><div class="row"><div class="themes">
+<button class="theme-dot" data-theme="white" style="background:#ffffff" aria-label="白色"></button>
+<button class="theme-dot" data-theme="paper" style="background:#f7f1e3" aria-label="米色"></button>
+<button class="theme-dot" data-theme="green" style="background:#d9e8cf" aria-label="护眼绿"></button>
+<button class="theme-dot" data-theme="pink" style="background:#fce9e6" aria-label="粉色"></button>
+<button class="theme-dot" data-theme="blue" style="background:#e3eaf2" aria-label="浅蓝"></button>
+</div></div></div></div>
+<div class="sec"><h3>外观</h3><div class="group">
+<div class="row"><span class="label">夜间模式</span><input type="checkbox" class="switch" id="nightSwitch" style="margin-left:auto"></div>
+<div class="row"><span class="label">亮度</span><input type="range" id="brightRange" min="40" max="100" step="1" value="100"><span class="val" id="brightVal">100%</span></div>
+</div></div>
+<div class="sec"><h3>图片适应</h3><div class="group"><div class="row"><div class="seg" id="fitSeg">
+<button data-fit="width" class="on">适应宽度</button><button data-fit="height">适应高度</button>
+</div></div></div></div>
+<div class="sec"><h3>来源</h3><div class="group"><div class="row"><a id="sourceLink" href="#" target="_blank" rel="noopener">原站</a><span class="chev">›</span></div></div></div>
+</section>
+<section id="catalog">
+<div class="cathead"><div class="top"><button id="catalogClose">关闭</button><h2 id="tocTitle">目录</h2><span style="width:44px"></span></div>
+<input id="catalogSearch" type="search" placeholder="搜索章节" enterkeyhint="search"></div>
+<div id="tocList"></div>
+</section>
+<script>
+(function(){
+"use strict";
+/* ========== 链接参数（机器人发来的阅读链接） ==========
+ * 包子：?source=baozi&comic={漫画编号}&ch={话下标}&title={书名}&chname={话名}
+ * 日漫：?source=mangadex&manga={漫画UUID}&chapter={章节UUID}&title={书名}&chname={话名}
+ * ch 是目录下标（0 = 第一话）；chapter 是 MangaDex 的章节 UUID。 */
+const params = new URLSearchParams(location.search);
+const source = params.get("source") || "";
+const comicId = params.get("comic") || "";
+const mangaId = params.get("manga") || "";
+const chapterIdParam = params.get("chapter") || "";
+const chParam = params.get("ch");
+const paramTitle = params.get("title") || "";
+const paramChName = params.get("chname") || "";
+const WORKER = "https://book-proxy.qqbookproxy.workers.dev/";
+const proxyUrl = (u) => WORKER + "?u=" + encodeURIComponent(u);
+
+/* ========== 元素 ========== */
+const $ = (id) => document.getElementById(id);
+const titleEl = $("comicTitle"), imgEl = $("pageImg"),
+  stageStatusEl = $("stageStatus"), stageStatusTextEl = $("stageStatusText"),
+  stageRetryBtn = $("stageRetry"), fatalEl = $("fatal"), fatalTextEl = $("fatalText"),
+  footnoteEl = $("footnoteText"), sliderEl = $("chapterSlider"),
+  prevBtn = $("prevBtn"), nextBtn = $("nextBtn"), progressEl = $("progressText"),
+  indicatorEl = $("pageIndicator"), tocTitleEl = $("tocTitle"), tocListEl = $("tocList"),
+  sourceLinkEl = $("sourceLink");
+
+let sourceUrl = "", sourceLabel = "原站";
+let chapters = []; // {name, id?}：包子按详情页顺序（正序），MangaDex 按话数升序
+let cur = 0, images = [], page = 0;
+let fit = "width", brightness = 100;
+let chapterSeq = 0, pageSeq = 0;
+
+/* ========== 设置（localStorage） ========== */
+// 主题与小说页共用 novel-theme2，两边保持同一配色；夜间/亮度/适应方式存在 comic-settings-v1
+const SET_KEY = "comic-settings-v1";
+try {
+  const s = JSON.parse(localStorage.getItem(SET_KEY) || "null");
+  if (s) {
+    if (s.fit === "height") fit = "height";
+    if (typeof s.brightness === "number" && s.brightness >= 40 && s.brightness <= 100) brightness = s.brightness;
+    if (s.night) document.body.classList.add("night");
+  }
+} catch (e) {}
+function saveSettings(){
+  try { localStorage.setItem(SET_KEY, JSON.stringify({ fit, brightness, night: document.body.classList.contains("night") })); } catch (e) {}
+}
+// 阅读进度：每部漫画一个键（MangaDex 同时存章节 UUID，目录变了也能按 UUID 找回）
+const PROG_KEY = "comic-progress-" + source + "-" + (comicId || mangaId || "unknown");
+let savedProg = null;
+try { savedProg = JSON.parse(localStorage.getItem(PROG_KEY) || "null"); } catch (e) {}
+function saveProgress(){
+  try { localStorage.setItem(PROG_KEY, JSON.stringify({ ch: cur, id: chapters[cur] ? chapters[cur].id : undefined, page })); } catch (e) {}
+}
+
+/* ========== 主题（与小说页同一套） ========== */
+const themeDots = document.querySelectorAll(".theme-dot");
+function applyTheme(t){
+  document.body.dataset.theme = t;
+  themeDots.forEach(d => d.classList.toggle("active", d.dataset.theme === t));
+  try { localStorage.setItem("novel-theme2", t); } catch (e) {}
+}
+themeDots.forEach(d => { d.onclick = () => applyTheme(d.dataset.theme); });
+let savedTheme = "white";
+try { savedTheme = localStorage.getItem("novel-theme2") || "white"; } catch (e) {}
+if (!["paper", "white", "green", "pink", "blue"].includes(savedTheme)) savedTheme = "white";
+applyTheme(savedTheme);
+
+function applySettings(){
+  document.body.classList.toggle("fit-width", fit === "width");
+  document.body.classList.toggle("fit-height", fit === "height");
+  $("dimOverlay").style.opacity = ((100 - brightness) / 100 * 0.7).toFixed(3);
+  const ns = $("nightSwitch"); if (ns) ns.checked = document.body.classList.contains("night");
+  const br = $("brightRange"); if (br) br.value = brightness;
+  const bv = $("brightVal"); if (bv) bv.textContent = brightness + "%";
+  document.querySelectorAll("#fitSeg button").forEach(b => b.classList.toggle("on", (b.dataset.fit === "height") === (fit === "height")));
+}
+
+/* ========== 状态显示 ========== */
+function showStageStatus(text, retryFn){
+  stageStatusTextEl.textContent = text;
+  if (retryFn) { stageRetryBtn.classList.remove("hidden"); stageRetryBtn.onclick = retryFn; }
+  else { stageRetryBtn.classList.add("hidden"); stageRetryBtn.onclick = null; }
+  stageStatusEl.classList.add("show");
+}
+function hideStageStatus(){ stageStatusEl.classList.remove("show"); }
+function fail(msg){
+  titleEl.textContent = "链接无效";
+  fatalTextEl.textContent = msg + " ";
+  const retry = document.createElement("button"); retry.className = "retry"; retry.textContent = "重试";
+  retry.onclick = () => location.reload();
+  fatalTextEl.appendChild(retry);
+  if (sourceUrl) {
+    fatalTextEl.appendChild(document.createTextNode(" "));
+    const a = document.createElement("a"); a.href = sourceUrl; a.target = "_blank"; a.rel = "noopener"; a.textContent = "去" + sourceLabel + "看";
+    fatalTextEl.appendChild(a);
+  }
+  fatalEl.classList.add("show");
+  document.body.classList.add("chrome"); // 出错时把菜单露出来，方便去原站
+  hideStageStatus();
+}
+
+/* ========== 取数（带重试） ========== */
+async function fetchText(url, viaWorker){
+  const target = viaWorker ? proxyUrl(url) : url;
+  let lastErr = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const res = await fetch(target, { headers: { "Accept": "text/html,application/json,*/*" } });
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      return await res.text();
+    } catch (e) {
+      lastErr = e;
+      if (attempt < 2) await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
+    }
+  }
+  throw lastErr;
+}
+async function fetchDoc(url){
+  const html = await fetchText(url, true);
+  if (/Just a moment|Attention Required/i.test(html)) throw new Error("源站要求验证，请去原站阅读");
+  return new DOMParser().parseFromString(html, "text/html");
+}
+async function fetchJson(url){
+  return JSON.parse(await fetchText(url, false));
+}
+function absUrl(href, base){
+  try { return new URL(href, base).toString(); } catch (e) { return ""; }
+}
+
+/* ========== 参数校验与来源 ========== */
+if (source !== "baozi" && source !== "mangadex") {
+  fail("这条链接的漫画源不支持，请回机器人重新搜漫画。");
+  return;
+}
+if (source === "baozi") {
+  if (!/^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(comicId)) {
+    fail("这条链接的漫画编号无效，请回机器人重新搜漫画。");
+    return;
+  }
+  sourceUrl = "https://cn.webmota.com/comic/" + comicId;
+  sourceLabel = "包子漫画";
+} else {
+  if (!mangaId) {
+    fail("这条链接的漫画编号无效，请回机器人重新搜漫画。");
+    return;
+  }
+  if (!chapterIdParam && !(savedProg && savedProg.id)) {
+    fail("这条链接缺少章节信息，请回机器人重新搜漫画。");
+    return;
+  }
+  sourceUrl = "https://mangadex.org/title/" + mangaId;
+  sourceLabel = "MangaDex";
+}
+sourceLinkEl.href = sourceUrl;
+sourceLinkEl.textContent = sourceLabel + " ›";
+footnoteEl.textContent = "内容由" + sourceLabel + "提供，本页仅做排版呈现（图片由源站直出，不经过机器人服务器存储）。若加载失败，可点屏幕调出菜单、进设置点「" + sourceLabel + "」直接在源站阅读。";
+titleEl.textContent = paramTitle || "漫画";
+document.title = (paramTitle || "漫画") + " - 漫画阅读页";
+
+/* ========== 目录 ========== */
+async function loadBaoziCatalog(){
+  const doc = await fetchDoc("https://cn.webmota.com/comic/" + comicId);
+  // 详情页标题（机器人没给书名时补一个）
+  if (!paramTitle) {
+    const h1 = doc.querySelector("h1.comics-detail__title");
+    const t = h1 ? (h1.textContent || "").trim() : "";
+    if (t) { titleEl.textContent = t; document.title = t + " - 漫画阅读页"; }
+  }
+  const names = [];
+  const collect = (root) => {
+    if (!root) return;
+    root.querySelectorAll("div.comics-chapters > a > div > span").forEach(s => {
+      const t = (s.textContent || "").trim();
+      if (t) names.push(t);
+    });
+  };
+  collect(doc.querySelector("div#chapter-items"));
+  collect(doc.querySelector("div#chapters_other_list"));
+  if (!names.length) {
+    // 兜底：容器选择器失效时全页抓章节名去重（顺序以 Venera 源为准，反转）
+    const seen = new Set();
+    doc.querySelectorAll("div.comics-chapters > a > div > span").forEach(s => {
+      const t = (s.textContent || "").trim();
+      if (t && !seen.has(t)) { seen.add(t); names.push(t); }
+    });
+    names.reverse();
+  }
+  // 注意：两个容器本身就是正序（01、02……），与 page_direct 的 chapter_slot 一致
+  // （实测 slot 0 = 第 01 话、slot 末位 = 最新一话），因此这里不反转。
+  chapters = names.map(n => ({ name: n }));
+  if (!chapters.length) throw new Error("目录为空");
+}
+async function loadMangaDexCatalog(){
+  // 先中文，没有再英文；外链章节（externalUrl）无法在本页读，跳过；同一话多个汉化组只留第一个
+  for (const lang of ["zh", "en"]) {
+    const j = await fetchJson("https://api.mangadex.org/manga/" + mangaId + "/feed?translatedLanguage[]=" + lang + "&limit=100&order[chapter]=asc");
+    const seen = new Set();
+    const list = [];
+    (j.data || []).forEach(c => {
+      const a = c.attributes || {};
+      if (a.externalUrl) return;
+      const num = a.chapter || "";
+      if (num && seen.has(num)) return;
+      if (num) seen.add(num);
+      const name = num ? ("第" + num + "话" + (a.title ? " " + a.title : "")) : (a.title || "单话");
+      list.push({ id: c.id, name });
+    });
+    if (list.length) { chapters = list; return; }
+  }
+  throw new Error("目录为空");
+}
+
+/* ========== 本话图片 ========== */
+async function loadBaoziImages(slot){
+  const start = "https://cn.webmota.com/user/page_direct?comic_id=" + encodeURIComponent(comicId) + "&section_slot=0&chapter_slot=" + slot;
+  const seen = new Set(), imgs = [];
+  let url = start;
+  for (let p = 0; p < 200 && url; p++) {
+    if (seen.has(url)) break;
+    seen.add(url);
+    let doc;
+    try { doc = await fetchDoc(url); }
+    catch (e) { if (imgs.length) break; throw e; }
+    const before = imgs.length;
+    const pick = (el) => {
+      let u = (el.getAttribute("data-src") || el.getAttribute("src") || "").trim();
+      if (!u) return;
+      if (u.startsWith("//")) u = "https:" + u;
+      if (/^https?:\/\//.test(u) && !imgs.includes(u)) imgs.push(u);
+    };
+    doc.querySelectorAll(".comic-contain .comic-contain__item").forEach(pick);
+    if (imgs.length === before) doc.querySelectorAll(".comic-contain img").forEach(pick);
+    // 长话会分页：顺着“下一页”继续抓
+    const next = [...doc.querySelectorAll("a")].find(a => /^(?:点击进入|點擊進入)?(?:下一页|下一頁|下页|下頁)$/.test((a.textContent || "").trim()));
+    const href = next ? (next.getAttribute("href") || "") : "";
+    url = href ? absUrl(href, url) : "";
+  }
+  if (!imgs.length) throw new Error("本话图片为空");
+  return imgs;
+}
+async function loadMangaDexImages(chapterId){
+  const j = await fetchJson("https://api.mangadex.org/at-home/server/" + chapterId);
+  const base = j.baseUrl, hash = j.chapter && j.chapter.hash, data = (j.chapter && j.chapter.data) || [];
+  if (!base || !hash || !data.length) throw new Error("本话图片为空");
+  return data.map(f => base + "/data/" + hash + "/" + f);
+}
+
+/* ========== 显示 ========== */
+function updateProgress(){
+  progressEl.textContent = chapters.length
+    ? "第 " + (cur + 1) + " 话 / 共 " + chapters.length + " 话" + (images.length ? " · 第 " + (page + 1) + " / " + images.length + " 页" : "")
+    : "-- / --";
+  indicatorEl.textContent = images.length ? (page + 1) + " / " + images.length : "";
+}
+function updateChrome(){
+  document.querySelectorAll(".toc-item").forEach((t, j) => t.classList.toggle("active", j === cur));
+  prevBtn.disabled = cur === 0;
+  nextBtn.disabled = cur === chapters.length - 1;
+  sliderEl.max = Math.max(0, chapters.length - 1);
+  sliderEl.value = cur;
+  updateProgress();
+}
+function syncUrl(){
+  const qp = new URLSearchParams(location.search);
+  if (source === "baozi") qp.set("ch", String(cur));
+  else if (chapters[cur]) qp.set("chapter", chapters[cur].id);
+  if (chapters[cur]) qp.set("chname", chapters[cur].name);
+  if (paramTitle) qp.set("title", paramTitle);
+  try { history.replaceState(null, "", location.pathname + "?" + qp.toString()); } catch (e) {}
+}
+async function showChapter(i, pg){
+  if (!chapters.length) return;
+  cur = Math.min(Math.max(i, 0), chapters.length - 1);
+  const c = chapters[cur];
+  document.title = (paramTitle || titleEl.textContent || "漫画") + " - " + c.name;
+  page = 0; images = [];
+  document.body.classList.remove("ready");
+  updateChrome();
+  syncUrl();
+  showStageStatus("正在加载「" + c.name + "」…");
+  const mySeq = ++chapterSeq;
+  let list;
+  try {
+    list = source === "baozi" ? await loadBaoziImages(cur) : await loadMangaDexImages(c.id);
+  } catch (e) {
+    if (mySeq !== chapterSeq) return;
+    showStageStatus("本话加载失败（" + (e.message || e) + "），可重试或去原站读本话。", () => showChapter(cur, 0));
+    return;
+  }
+  if (mySeq !== chapterSeq) return;
+  images = list;
+  document.body.classList.add("ready");
+  showPage(pg === "last" ? images.length - 1 : (Number.isInteger(pg) ? pg : 0));
+  saveProgress();
+}
+function showPage(i){
+  if (!images.length) return;
+  page = Math.min(Math.max(i, 0), images.length - 1);
+  const url = images[page];
+  const seq = ++pageSeq;
+  imgEl.dataset.seq = String(seq);
+  imgEl.dataset.proxied = "";
+  imgEl.style.opacity = "0";
+  imgEl.alt = "第 " + (page + 1) + " 页";
+  showStageStatus("加载中…");
+  imgEl.src = url;
+  updateProgress();
+  preload(page + 1); preload(page - 1);
+  saveProgress();
+}
+imgEl.addEventListener("load", () => {
+  if (imgEl.dataset.seq !== String(pageSeq)) return;
+  imgEl.style.opacity = "1";
+  hideStageStatus();
+});
+imgEl.addEventListener("error", () => {
+  if (imgEl.dataset.seq !== String(pageSeq)) return;
+  if (!imgEl.dataset.proxied) {
+    // 直连失败：走 Worker 中转再试一次（源站 CDN 直连偶尔会被拦）
+    imgEl.dataset.proxied = "1";
+    imgEl.src = proxyUrl(images[page]);
+    return;
+  }
+  showStageStatus("这页图片加载失败，点按重试。", () => { imgEl.dataset.proxied = ""; showPage(page); });
+});
+function preload(i){
+  if (i < 0 || i >= images.length) return;
+  const im = new Image();
+  im.referrerPolicy = "no-referrer";
+  im.src = images[i];
+}
+function nextPage(){
+  if (!images.length) return;
+  if (page < images.length - 1) showPage(page + 1);
+  else if (cur < chapters.length - 1) showChapter(cur + 1, 0);
+}
+function prevPage(){
+  if (!images.length) return;
+  if (page > 0) showPage(page - 1);
+  else if (cur > 0) showChapter(cur - 1, "last");
+}
+
+/* ========== 菜单与面板 ========== */
+// 点屏幕出/藏菜单：只认「短按且几乎没动」的轻点；左右滑动翻页；左 1/3 上一页、右 1/3 下一页、中间开关菜单
+let downX = 0, downY = 0, downT = 0;
+document.body.addEventListener("pointerdown", (e) => { downX = e.clientX; downY = e.clientY; downT = Date.now(); });
+document.body.addEventListener("pointerup", (e) => {
+  if (e.target.closest("#topbar, #bottombar, #sheet, #catalog, #backdrop, #stageStatus, #fatal, button, a, input")) return;
+  if ($("sheet").classList.contains("open")) { closeSheet(); return; }
+  const dx = e.clientX - downX, dy = e.clientY - downY;
+  if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+    if (dx < 0) nextPage(); else prevPage();
+    return;
+  }
+  if (Date.now() - downT > 300) return;
+  if (Math.abs(e.clientX - downX) > 10 || Math.abs(e.clientY - downY) > 10) return;
+  const x = e.clientX / window.innerWidth;
+  if (x < 0.33) prevPage();
+  else if (x > 0.66) nextPage();
+  else document.body.classList.toggle("chrome");
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "ArrowRight" || e.key === "PageDown") { nextPage(); e.preventDefault(); }
+  else if (e.key === "ArrowLeft" || e.key === "PageUp") { prevPage(); e.preventDefault(); }
+});
+function openSheet(){
+  $("sheet").classList.add("open");
+  $("backdrop").classList.add("show");
+}
+function closeSheet(){
+  $("sheet").classList.remove("open");
+  $("backdrop").classList.remove("show");
+}
+function openCatalog(){ $("catalog").classList.add("open"); }
+function closeCatalog(){ $("catalog").classList.remove("open"); }
+$("topTocBtn").onclick = openCatalog;
+$("aaBtn").onclick = openSheet;
+$("sheetDone").onclick = closeSheet;
+$("backdrop").onclick = closeSheet;
+$("catalogClose").onclick = closeCatalog;
+$("catalogSearch").addEventListener("input", (e) => {
+  const q = (e.target.value || "").trim();
+  document.querySelectorAll(".toc-item").forEach(b => {
+    b.style.display = (!q || b.textContent.includes(q)) ? "" : "none";
+  });
+});
+sliderEl.addEventListener("change", (e) => {
+  const i = parseInt(e.target.value, 10);
+  if (Number.isInteger(i)) showChapter(i, 0);
+});
+prevBtn.onclick = () => showChapter(cur - 1, 0);
+nextBtn.onclick = () => showChapter(cur + 1, 0);
+$("nightSwitch").addEventListener("change", (e) => { document.body.classList.toggle("night", e.target.checked); applySettings(); saveSettings(); });
+$("brightRange").addEventListener("input", (e) => { brightness = parseInt(e.target.value, 10) || 100; applySettings(); saveSettings(); });
+document.querySelectorAll("#fitSeg button").forEach(b => { b.onclick = () => { fit = b.dataset.fit; applySettings(); saveSettings(); }; });
+
+/* ========== 启动 ========== */
+applySettings();
+showStageStatus("正在加载目录…");
+(async () => {
+  let catalogOk = true;
+  try {
+    if (source === "baozi") await loadBaoziCatalog();
+    else await loadMangaDexCatalog();
+  } catch (e) {
+    // 目录失败也不拦着看本话：只留当前一话，滑块与上下话不可用
+    catalogOk = false;
+    const fallbackName = paramChName || "本话";
+    chapters = source === "baozi"
+      ? [{ name: fallbackName }]
+      : (chapterIdParam || (savedProg && savedProg.id) ? [{ id: chapterIdParam || savedProg.id, name: fallbackName }] : []);
+    if (!chapters.length) { fail("目录加载失败（" + (e.message || e) + "）。"); return; }
+  }
+  // 起始话：优先用链接里的参数，其次用上次读到的进度
+  let start = 0;
+  if (source === "baozi") {
+    const n = parseInt(chParam, 10);
+    if (Number.isInteger(n) && n >= 0 && n < chapters.length) start = n;
+    else if (savedProg && Number.isInteger(savedProg.ch) && savedProg.ch >= 0 && savedProg.ch < chapters.length) start = savedProg.ch;
+  } else {
+    const idx = chapterIdParam ? chapters.findIndex(c => c.id === chapterIdParam) : -1;
+    if (idx >= 0) start = idx;
+    else if (chapterIdParam) {
+      // 链接里的章节不在目录里（比如目录只取了前 100 话）：单独加一项，保证能打开
+      chapters.push({ id: chapterIdParam, name: paramChName || "本话" });
+      start = chapters.length - 1;
+    } else if (savedProg && savedProg.id) {
+      const j = chapters.findIndex(c => c.id === savedProg.id);
+      if (j >= 0) start = j;
+    } else if (savedProg && Number.isInteger(savedProg.ch) && savedProg.ch >= 0 && savedProg.ch < chapters.length) start = savedProg.ch;
+  }
+  tocTitleEl.textContent = catalogOk ? "目录（共 " + chapters.length + " 话）" : "目录（加载失败，仅本话）";
+  chapters.forEach((c, i) => {
+    const b = document.createElement("button");
+    b.className = "toc-item"; b.dataset.ch = i; b.textContent = c.name;
+    b.onclick = () => { showChapter(i, 0); closeCatalog(); document.body.classList.remove("chrome"); };
+    tocListEl.appendChild(b);
+  });
+  let startPage = 0;
+  if (savedProg && savedProg.ch === start && Number.isInteger(savedProg.page) && savedProg.page >= 0) startPage = savedProg.page;
+  showChapter(start, startPage);
+})();
+})();
+</script>
+</body></html>
